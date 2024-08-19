@@ -11,6 +11,8 @@ const db = new pg.Client({
   port: 5432,
 });
 
+let current_user_id = ""
+
 const app = express();
 const port = 5138;
 
@@ -21,9 +23,9 @@ app.use(bodyParser.json());
 app.use(express.static("public"));
 
 app.use(cors({
-    origin: "http://localhost:5174",
+    origin: "*",
     methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type']
+    allowedHeaders: "*"
 }));
 
 app.get("/", async (req, res) => {
@@ -46,14 +48,25 @@ app.get("/register", (req, res) => {
 //   res.render("register.ejs");
 });
 
+app.post("/esp-register", (req, res) => {
+  console.log(req.body);
+  current_user_id = req.body.id;
+  res.sendStatus(200);
+});
+
+app.post("/esp-metrics", (req, res) => {
+  console.log(req.body);
+  res.sendStatus(200);
+});
+
 app.post("/register", async (req, res) => {
-    console.log(req.body);
+  //console.log(req.body);
   const username = req.body.username;
   const password = req.body.password;
-  const user_id = req.body.user_id;
+  const user_id = current_user_id;
   const balance = 10000;
 
-  console.log(req.body);
+  console.log(user_id);
 
   try{
     const checkResult = await db.query("SELECT * FROM users WHERE username = $1", [username]);
