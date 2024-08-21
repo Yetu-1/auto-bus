@@ -1,7 +1,6 @@
 import { Button, Col, Form, FormGroup, Row, Stack } from "react-bootstrap";
 import { Link, useNavigate } from "react-router-dom";
 import { FormEvent, useRef, useState } from "react";
-import { v4 as uuidV4 } from "uuid"
 
 
 export function CustomForm() {
@@ -11,8 +10,7 @@ export function CustomForm() {
 
     function handleSubmit(e: FormEvent) {
         e.preventDefault();
-        let user_id =  uuidV4();
-        let user = {username: emailRef.current!.value , password: passwordRef.current!.value, user_id: user_id};
+        let user = {username: emailRef.current!.value , password: passwordRef.current!.value};
         console.log(user);
 
         fetch('http://localhost:5138/register', {
@@ -41,7 +39,7 @@ export function CustomForm() {
                     <Form.Control ref={emailRef} required />
                 </FormGroup>
 
-                <FormGroup controlId="title">
+                <FormGroup controlId="password">
                     <Form.Label>Password</Form.Label>
                     <Form.Control ref={passwordRef} required type="password" />
                 </FormGroup>
