@@ -12,49 +12,58 @@
 
 #include <HTTPClient.h>
 
+#include <SPI.h>
+#include <MFRC522.h>
+#include <TinyGPSPlus.h>
+#include <SoftwareSerial.h>
+
+
 #define USE_SERIAL Serial
 
 WiFiMulti wifiMulti;
 
-#define REGISTER_MODE 112
-#define READ_MODE 64
+enum MODE {
+  REGISTER_MODE,
+  READ_MODE
+};
 
-int curr_mode = 0;
+volatile MODE curr_mode = READ_MODE;
 
-/*
-const char* ca = \ 
-"-----BEGIN CERTIFICATE-----\n" \  
-"MIIEkjCCA3qgAwIBAgIQCgFBQgAAAVOFc2oLheynCDANBgkqhkiG9w0BAQsFADA/\n" \  
-"MSQwIgYDVQQKExtEaWdpdGFsIFNpZ25hdHVyZSBUcnVzdCBDby4xFzAVBgNVBAMT\n" \  
-"DkRTVCBSb290IENBIFgzMB4XDTE2MDMxNzE2NDA0NloXDTIxMDMxNzE2NDA0Nlow\n" \  
-"SjELMAkGA1UEBhMCVVMxFjAUBgNVBAoTDUxldCdzIEVuY3J5cHQxIzAhBgNVBAMT\n" \  
-"GkxldCdzIEVuY3J5cHQgQXV0aG9yaXR5IFgzMIIBIjANBgkqhkiG9w0BAQEFAAOC\n" \  
-"AQ8AMIIBCgKCAQEAnNMM8FrlLke3cl03g7NoYzDq1zUmGSXhvb418XCSL7e4S0EF\n" \  
-"q6meNQhY7LEqxGiHC6PjdeTm86dicbp5gWAf15Gan/PQeGdxyGkOlZHP/uaZ6WA8\n" \  
-"SMx+yk13EiSdRxta67nsHjcAHJyse6cF6s5K671B5TaYucv9bTyWaN8jKkKQDIZ0\n" \  
-"Z8h/pZq4UmEUEz9l6YKHy9v6Dlb2honzhT+Xhq+w3Brvaw2VFn3EK6BlspkENnWA\n" \  
-"a6xK8xuQSXgvopZPKiAlKQTGdMDQMc2PMTiVFrqoM7hD8bEfwzB/onkxEz0tNvjj\n" \  
-"/PIzark5McWvxI0NHWQWM6r6hCm21AvA2H3DkwIDAQABo4IBfTCCAXkwEgYDVR0T\n" \  
-"AQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8EBAMCAYYwfwYIKwYBBQUHAQEEczBxMDIG\n" \  
-"CCsGAQUFBzABhiZodHRwOi8vaXNyZy50cnVzdGlkLm9jc3AuaWRlbnRydXN0LmNv\n" \  
-"bTA7BggrBgEFBQcwAoYvaHR0cDovL2FwcHMuaWRlbnRydXN0LmNvbS9yb290cy9k\n" \  
-"c3Ryb290Y2F4My5wN2MwHwYDVR0jBBgwFoAUxKexpHsscfrb4UuQdf/EFWCFiRAw\n" \  
-"VAYDVR0gBE0wSzAIBgZngQwBAgEwPwYLKwYBBAGC3xMBAQEwMDAuBggrBgEFBQcC\n" \  
-"ARYiaHR0cDovL2Nwcy5yb290LXgxLmxldHNlbmNyeXB0Lm9yZzA8BgNVHR8ENTAz\n" \  
-"MDGgL6AthitodHRwOi8vY3JsLmlkZW50cnVzdC5jb20vRFNUUk9PVENBWDNDUkwu\n" \  
-"Y3JsMB0GA1UdDgQWBBSoSmpjBH3duubRObemRWXv86jsoTANBgkqhkiG9w0BAQsF\n" \  
-"AAOCAQEA3TPXEfNjWDjdGBX7CVW+dla5cEilaUcne8IkCJLxWh9KEik3JHRRHGJo\n" \  
-"uM2VcGfl96S8TihRzZvoroed6ti6WqEBmtzw3Wodatg+VyOeph4EYpr/1wXKtx8/\n" \  
-"wApIvJSwtmVi4MFU5aMqrSDE6ea73Mj2tcMyo5jMd6jmeWUHK8so/joWUoHOUgwu\n" \  
-"X4Po1QYz+3dszkDqMp4fklxBwXRsW10KXzPMTZ+sOPAveyxindmjkW8lGy+QsRlG\n" \  
-"PfZ+G6Z6h7mjem0Y+iWlkYcV4PIWL1iwBi8saCbGS5jN2p8M+X+Q7UNKEkROb3N6\n" \  
-"KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==\n" \  
-"-----END CERTIFICATE-----\n";
-*/
+
+// GPS setup
+TinyGPSPlus gps;
+static const int RXPin = 35, TXPin = 34;
+static const uint32_t GPSBaud = 9600;
+
+// The serial connection to the GPS device
+SoftwareSerial ss(RXPin, TXPin);
+
+#define MODE_SELECT_PIN 16
+// RFID setup
+#define RST_PIN 22
+#define SS_PIN 5
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+// Timezone offset in hours (e.g., +1 for UTC+1)
+const int timezoneOffset = 1;
+
+// ISR for mode select button
+void IRAM_ATTR select_mode() {
+  if(curr_mode == REGISTER_MODE) {
+    curr_mode = READ_MODE;
+    Serial.println("Current Mode: READ");
+  }else {
+    curr_mode = REGISTER_MODE;
+    Serial.println("Current Mode: REGISTER");
+  }
+}
 
 void setup() {
 
     USE_SERIAL.begin(115200);
+    
+    // Start the GPS software serial
+    ss.begin(GPSBaud);
 
     USE_SERIAL.println();
     USE_SERIAL.println();
@@ -67,81 +76,106 @@ void setup() {
     }
 
     wifiMulti.addAP("david", "swordfish");
+    
+//    // Configure mode select button pin
+    pinMode(MODE_SELECT_PIN, INPUT_PULLUP);
+    attachInterrupt(MODE_SELECT_PIN, select_mode, FALLING);
+    
+    // Initialize SPI bus and RFID reader
+    SPI.begin();
+    rfid.PCD_Init();
 
 }
 
 void loop() {
-  curr_mode = READ_MODE;
-  int err_code = 0;
-  if(curr_mode == REGISTER_MODE) {
-    err_code = register_user();
-    Serial.println(err_code);
-    
-  }else if (curr_mode == READ_MODE) {
-     err_code = send_metrics();
-    
-  }else {
-    Serial.println("INVALID MODE");
+  String card_uid = "";
+  SPI.begin();
+  // Read Gps and save values as "strings" into longitude and latitude
+  while (ss.available() > 0) {   // Continuously check for GPS data
+    gps.encode(ss.read());
   }
   
-    // wait for WiFi connection
-//    if((wifiMulti.run() == WL_CONNECTED)) {
-//
-//        HTTPClient http;
-//
-//        USE_SERIAL.print("[HTTP] begin...\n");
-//        // configure traged server and url
-//        //http.begin("https://www.howsmyssl.com/a/check", ca); //HTTPS
-//        http.begin("http://192.168.114.60:5138/"); //HTTP
-//
-//        USE_SERIAL.print("[HTTP] GET...\n");
-//        // start connection and send HTTP header
-//        int httpCode = http.GET();
-//        
-//        // httpCode will be negative on error
-//        if(httpCode > 0) {
-//            // HTTP header has been send and Server response header has been handled
-//            USE_SERIAL.printf("[HTTP] GET... code: %d\n", httpCode);
-//
-//            // file found at server
-//            if(httpCode == HTTP_CODE_OK) {
-//                String payload = http.getString();
-//                USE_SERIAL.println(payload);
-//            }
-//        } else {
-//            USE_SERIAL.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-//        }
-//
-//        http.end();
-//    }
-    delay(10000);
+  // Check if a new RFID card is present
+  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    // Extract and print the RFID UID
+    for (byte i = 0; i < rfid.uid.size; i++) {
+      card_uid += String(rfid.uid.uidByte[i] < 0x10 ? "0" : "");
+      card_uid += String(rfid.uid.uidByte[i], HEX);
+    }
+    
+    Serial.println("Card read successfully: " + card_uid + "\n");
+    
+    // HALT PICC
+    rfid.PICC_HaltA();
+    
+    int err_code = 0;
+    // LCD CODE SHOULD BE IN THIS CONDITIONAL STATEMENTS
+    if(curr_mode == REGISTER_MODE) {
+      err_code = register_user(card_uid);
+      Serial.println("Card id sent for registration");
+      if(err_code == 200) {
+        Serial.println("Card details sent successfully for registration\n\n");
+        
+      }else {
+        Serial.printf("Error [ %d ] Invalid card id was sent to the server (null value)\n\n", err_code);
+      }
+    }else if (curr_mode == READ_MODE) {
+       err_code = send_metrics(card_uid);
+       if(err_code == 200) {
+         Serial.println("Card id and GPS location sent successfully\n\n");
+       }else if(err_code == 404) { // Card declined (user not in the database)
+          Serial.println("CARD DECLINED (USER NOT REGISTERED)");
+       }else {
+         Serial.printf("Error [ %d ] \n\n", err_code);
+       }
+    }else {
+      Serial.println("INVALID MODE");
+    }
+  }
 }
 
-int register_user() {
-  String id = "";
-  // read rfid card
-  id = "1223445666"; 
-  String payLoad = "{\"id\":\"" + id + "\"}";
-  int err_code = send_payload("http://192.168.114.60:5138/esp-register", payLoad);
+int register_user(String uid) {
+  Serial.println("Sending card uid to server...");
+  String payLoad = "{\"id\":\"" + uid + "\"}";
+  int err_code = send_payload("http://192.168.135.60:5138/esp-register", payLoad);
   return err_code;
 }
 
-int send_metrics() {
-  String card_uid = "778439";
-  String longitude = "12 432 54";
-  String latitude = "43 65 7";
-  String curr_time = "12:45";
-
-
-  // Read card and save value as a string into card_uid 
-
-  // Read Gps and save values as "strings" into longitude and latitude
-
-  // Read current time and save into curr_time as a string
+int send_metrics(String uid) {
+  String longitude = "";
+  String latitude = "";
+  String curr_time = "";
 
   
-  String payLoad = "{\"id\":\"" + card_uid + "\", \"long\": \"" + longitude + "\", \"lat\": \"" + latitude + "\", \"curr_time\": \"" + curr_time + "\"}";
-  int err_code = send_payload("http://192.168.114.60:5138/esp-metrics", payLoad);
+  // Check if GPS data is valid
+  if (gps.location.isValid()) {
+    Serial.println("Formatting GPS data");
+    // Adjust time for UTC+1
+    int hour = gps.time.hour() + timezoneOffset;
+    if (hour >= 24) {
+      hour -= 24; // Adjust for next day if it crosses midnight
+    } else if (hour < 0) {
+      hour += 24; // Adjust for previous day if negative
+    }
+    
+    // Print latitude, longitude, and adjusted time
+    longitude = String(gps.location.lat(), 6);
+    latitude = String(gps.location.lng(), 6);
+    
+    // Read current time and save into curr_time as a string
+    curr_time = String(hour < 10 ? "0" : ""); // Add leading zero if necessary
+    curr_time += String(hour);
+    curr_time += ":" + String(gps.time.minute() < 10 ? "0" : ""); // Add leading zero if necessary
+    curr_time += String(gps.time.minute());
+    curr_time += ":" + String(gps.time.second() < 10 ? "0" : ""); // Add leading zero if necessary
+    curr_time += String(gps.time.second());
+    
+    Serial.println("GPS data read successfully");
+  }
+
+  Serial.println("Sending device metrics...");
+  String payLoad = "{\"uid\":\"" + uid + "\", \"longitude\": \"" + longitude + "\", \"latitude\": \"" + latitude + "\", \"curr_time\": \"" + curr_time + "\"}";
+  int err_code = send_payload("http://192.168.135.60:5138/esp-metrics", payLoad);
   return err_code; 
 }
 

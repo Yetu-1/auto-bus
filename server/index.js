@@ -42,22 +42,17 @@ app.get("/", async (req, res) => {
     }
 });
 
-app.get("/login", (req, res) => {
-//   res.render("login.ejs");
-});
-
-app.get("/register", (req, res) => {
-//   res.render("register.ejs");
-});
-
 app.post("/esp-register", (req, res) => {
   console.log(req.body);
   current_user_id = req.body.id;
+  if(current_user_id === null) {
+    res.sendStatus(400);
+  }
   res.sendStatus(200);
 });
 
 app.post("/esp-metrics", async (req, res) => {
-  //console.log(req.body);
+  console.log(req.body);
 
   const uid = req.body.uid;
   let coor1 = {
@@ -66,42 +61,54 @@ app.post("/esp-metrics", async (req, res) => {
   }
   const curr_time = req.body.curr_time;
 
-  //console.log(coor1);
   try{
-    const checkResult = await db.query("SELECT * FROM passengers WHERE uid = $1", [uid]);
+    const checkResult = await db.query("SELECT * FROM users WHERE user_id = $1", [uid]);
     
-    if(checkResult.rows.length > 0){
-      // id already exists
-      const result = await db.query("SELECT * FROM passengers WHERE uid = $1", [uid]); // get source longitude and latitude
-      
-      console.log(result.rows);
-
-      let coor2 = {
-        long: result.rows[0].longitude,
-        lat:  result.rows[0].latitude
-      }
-
+    if(checkResult.rows.length == 0){ // uid does not exist
+      console.log("USER NOT REGISTERED");
+      res.sendStatus(404);
+    }else {
+      //console.log(coor1);
       try{
-        // Delete from db
-        const resp = await db.query("DELETE FROM passengers WHERE uid = $1", [uid]);
-      }catch {
+        const checkResult = await db.query("SELECT * FROM passengers WHERE uid = $1", [uid]);
+        
+        if(checkResult.rows.length > 0){
+          // id already exists
+          const result = await db.query("SELECT * FROM passengers WHERE uid = $1", [uid]); // get source longitude and latitude
+          
+          console.log(result.rows);
+
+          let coor2 = {
+            long: result.rows[0].longitude,
+            lat:  result.rows[0].latitude
+          }
+
+          try{
+            // Delete from db
+            const resp = await db.query("DELETE FROM passengers WHERE uid = $1", [uid]);
+          }catch {
+            res.sendStatus(400);
+          }
+          
+          // get the distance between the coordinates using the open street map route api
+          let route_data = await getRouteData(coor1, coor2);
+          console.log(route_data);
+          const resp = await bill_user(uid, route_data.distance);
+
+          res.sendStatus(200);
+        }else{
+          // id does not exist. Save passenger in array
+          const result = await db.query("INSERT INTO passengers (uid, longitude, latitude, time) VALUES ($1, $2, $3, $4)",[uid, coor1.long, coor1.lat, curr_time]);
+          console.log("Desitination Location saved in database")
+          res.sendStatus(200);
+        }
+      }catch(err) {
+        console.log(err);
         res.sendStatus(400);
       }
-      
-      // get the distance between the coordinates using the open street map route api
-      let route_data = await getRouteData(coor1, coor2);
-      console.log(route_data);
-      const resp = await bill_user(uid, route_data.distance);
-
-      res.sendStatus(200);
-    }else{
-      // id does not exist. Save passenger in array
-      const result = await db.query("INSERT INTO passengers (uid, longitude, latitude, time) VALUES ($1, $2, $3, $4)",[uid, coor1.long, coor1.lat, curr_time]);
-      res.sendStatus(200);
     }
   }catch(err) {
     console.log(err);
-    res.sendStatus(400);
   }
 });
 
@@ -118,7 +125,7 @@ app.post("/register", async (req, res) => {
     const checkResult = await db.query("SELECT * FROM users WHERE username = $1", [username]);
     
     if(checkResult.rows.length > 0){
-      res.sendStatus(400) // Email already exists. Try logging in
+      res.sendStatus(400) // Email already exists.
     }else{
       const result = await db.query("INSERT INTO users (username, password, user_id, balance) VALUES ($1, $2, $3, $4)",[username, password, user_id, balance]);
       console.log(result);
@@ -126,6 +133,7 @@ app.post("/register", async (req, res) => {
     }
   }catch(err) {
     console.log(err);
+    res.sendStatus(400);
   }
 });
 
